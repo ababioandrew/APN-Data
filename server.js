@@ -40,24 +40,28 @@ function blobKey(filename) {
 }
 
 // =====================================================
-// READ JSON BLOB
+// READ JSON BLOB (Private store — uses auth header)
 // Returns [] if the blob does not exist yet.
 // =====================================================
 
 async function readJSONBlob(filename) {
   const key = blobKey(filename);
+  const token = process.env.BLOB_READ_WRITE_TOKEN;
 
   try {
-    const meta = await head(key, {
-      token: process.env.BLOB_READ_WRITE_TOKEN,
-    });
+    const meta = await head(key, { token });
 
-    const res = await fetch(meta.url, { cache: "no-store" });
+    // Private blobs need the Authorization header to fetch
+    const res = await fetch(meta.url, {
+      cache: "no-store",
+      headers: {
+        Authorization: `Bearer ${token}`,
+      },
+    });
 
     if (!res.ok) return [];
 
     const text = await res.text();
-
     return text.trim() ? JSON.parse(text) : [];
   } catch (err) {
     // -------------------------------------------------
@@ -79,11 +83,15 @@ async function readJSONBlob(filename) {
   }
 }
 
+// =====================================================
+// WRITE JSON BLOB (Private store)
+// =====================================================
+
 async function writeJSONBlob(filename, data) {
   const key = blobKey(filename);
 
   await put(key, JSON.stringify(data, null, 2), {
-    access: "public",
+    access: "private",                          // ← was "public"
     contentType: "application/json",
     addRandomSuffix: false,
     allowOverwrite: true,
