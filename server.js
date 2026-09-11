@@ -39,31 +39,49 @@ function blobKey(filename) {
   return `data/${safe}`;
 }
 
-// Read a JSON blob. Returns [] if it doesn't exist yet.
+// =====================================================
+// READ JSON BLOB
+// Returns [] if the blob does not exist yet.
+// =====================================================
+
 async function readJSONBlob(filename) {
   const key = blobKey(filename);
+
   try {
     const meta = await head(key, {
       token: process.env.BLOB_READ_WRITE_TOKEN,
     });
+
     const res = await fetch(meta.url, { cache: "no-store" });
+
     if (!res.ok) return [];
+
     const text = await res.text();
+
     return text.trim() ? JSON.parse(text) : [];
   } catch (err) {
-    if (
+    // -------------------------------------------------
+    // Catch ALL "not found" variants from Vercel Blob
+    // -------------------------------------------------
+    const msg = String(err?.message || "").toLowerCase();
+
+    const isNotFound =
       err?.name === "BlobNotFoundError" ||
-      err?.message?.toLowerCase().includes("not found")
-    ) {
+      msg.includes("does not exist") ||
+      msg.includes("not found") ||
+      msg.includes("blobnotfound");
+
+    if (isNotFound) {
       return [];
     }
+
     throw err;
   }
 }
 
-// Write a JSON blob
 async function writeJSONBlob(filename, data) {
   const key = blobKey(filename);
+
   await put(key, JSON.stringify(data, null, 2), {
     access: "public",
     contentType: "application/json",
@@ -73,8 +91,13 @@ async function writeJSONBlob(filename, data) {
   });
 }
 
+// =====================================================
+// FIND RECORD BY ID
+// =====================================================
+
 function findRecordById(data, id) {
   if (!Array.isArray(data)) return -1;
+
   return data.findIndex(
     (item) =>
       String(item.id) === String(id) ||
@@ -125,11 +148,17 @@ app.get("/api/json-files", async (req, res) => {
       prefix: "data/",
       token: process.env.BLOB_READ_WRITE_TOKEN,
     });
-    const files = blobs.map((b) => b.pathname.replace(/^data\//, ""));
+
+    const files = blobs.map((b) =>
+      b.pathname.replace(/^data\//, "")
+    );
+
     res.json({ success: true, count: files.length, files });
   } catch (error) {
     console.error("List files error:", error);
-    res.status(500).json({ success: false, error: "Unable to list files." });
+    res
+      .status(500)
+      .json({ success: false, error: "Unable to list files." });
   }
 });
 
@@ -157,20 +186,27 @@ app.get("/api/json/:filename", async (req, res) => {
 app.get("/api/json/:filename/search", async (req, res) => {
   try {
     const query = String(req.query.q || "").trim().toLowerCase();
+
     if (!query) {
-      return res
-        .status(400)
-        .json({ success: false, error: "Search query required (?q=...)" });
+      return res.status(400).json({
+        success: false,
+        error: "Search query required (?q=...)",
+      });
     }
+
     const data = await readJSONBlob(req.params.filename);
+
     if (!Array.isArray(data)) {
-      return res
-        .status(400)
-        .json({ success: false, error: "Search only works on arrays." });
+      return res.status(400).json({
+        success: false,
+        error: "Search only works on arrays.",
+      });
     }
+
     const results = data.filter((item) =>
       JSON.stringify(item).toLowerCase().includes(query)
     );
+
     res.json({ success: true, count: results.length, results });
   } catch (error) {
     res.status(error.status || 500).json({
@@ -187,18 +223,22 @@ app.get("/api/json/:filename/search", async (req, res) => {
 app.get("/api/json/:filename/:id", async (req, res) => {
   try {
     const data = await readJSONBlob(req.params.filename);
+
     if (!Array.isArray(data)) {
       return res
         .status(400)
         .json({ success: false, error: "Not an array." });
     }
+
     const index = findRecordById(data, req.params.id);
+
     if (index === -1) {
       return res.status(404).json({
         success: false,
         error: `Record "${req.params.id}" not found.`,
       });
     }
+
     res.json(data[index]);
   } catch (error) {
     res.status(error.status || 500).json({
@@ -215,10 +255,16 @@ app.get("/api/json/:filename/:id", async (req, res) => {
 app.post("/api/json/:filename", async (req, res) => {
   try {
     const newItem = req.body;
-    if (!newItem || typeof newItem !== "object" || Array.isArray(newItem)) {
-      return res
-        .status(400)
-        .json({ success: false, error: "Body must be a JSON object." });
+
+    if (
+      !newItem ||
+      typeof newItem !== "object" ||
+      Array.isArray(newItem)
+    ) {
+      return res.status(400).json({
+        success: false,
+        error: "Body must be a JSON object.",
+      });
     }
 
     const data = await readJSONBlob(req.params.filename);
@@ -255,13 +301,19 @@ app.put("/api/json/:filename/:id", async (req, res) => {
     const { filename, id } = req.params;
     const updates = req.body;
 
-    if (!updates || typeof updates !== "object" || Array.isArray(updates)) {
-      return res
-        .status(400)
-        .json({ success: false, error: "Body must be a JSON object." });
+    if (
+      !updates ||
+      typeof updates !== "object" ||
+      Array.isArray(updates)
+    ) {
+      return res.status(400).json({
+        success: false,
+        error: "Body must be a JSON object.",
+      });
     }
 
     const data = await readJSONBlob(filename);
+
     if (!Array.isArray(data)) {
       return res
         .status(400)
@@ -269,6 +321,7 @@ app.put("/api/json/:filename/:id", async (req, res) => {
     }
 
     const index = findRecordById(data, id);
+
     if (index === -1) {
       return res.status(404).json({
         success: false,
@@ -277,6 +330,7 @@ app.put("/api/json/:filename/:id", async (req, res) => {
     }
 
     const originalId = data[index].id || data[index]._id || id;
+
     data[index] = { ...data[index], ...updates, id: originalId };
 
     await writeJSONBlob(filename, data);
@@ -311,6 +365,7 @@ app.delete("/api/json/:filename/:id", async (req, res) => {
     }
 
     const index = findRecordById(data, id);
+
     if (index === -1) {
       return res.status(404).json({
         success: false,
@@ -319,6 +374,7 @@ app.delete("/api/json/:filename/:id", async (req, res) => {
     }
 
     const [deleted] = data.splice(index, 1);
+
     await writeJSONBlob(filename, data);
 
     res.json({
@@ -362,8 +418,11 @@ app.use((err, req, res, next) => {
 
 if (!process.env.VERCEL) {
   const server = app.listen(PORT, () => {
-    console.log(`🚀 JSON Express Server running on http://localhost:${PORT}`);
+    console.log(
+      `🚀 JSON Express Server running on http://localhost:${PORT}`
+    );
   });
+
   server.on("error", (e) => {
     if (e.code === "EADDRINUSE") {
       console.error(`❌ Port ${PORT} in use.`);
