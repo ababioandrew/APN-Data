@@ -40,33 +40,22 @@ function blobKey(filename) {
 }
 
 // =====================================================
-// READ JSON BLOB (Private store — uses auth header)
-// Returns [] if the blob does not exist yet.
+// READ JSON BLOB — OIDC mode (no token arg)
 // =====================================================
 
 async function readJSONBlob(filename) {
   const key = blobKey(filename);
-  const token = process.env.BLOB_READ_WRITE_TOKEN;
 
   try {
-    const meta = await head(key, { token });
+    const meta = await head(key); // ✅ no token — SDK uses OIDC
 
-    // Private blobs need the Authorization header to fetch
-    const res = await fetch(meta.url, {
-      cache: "no-store",
-      headers: {
-        Authorization: `Bearer ${token}`,
-      },
-    });
+    const res = await fetch(meta.url, { cache: "no-store" });
 
     if (!res.ok) return [];
 
     const text = await res.text();
     return text.trim() ? JSON.parse(text) : [];
   } catch (err) {
-    // -------------------------------------------------
-    // Catch ALL "not found" variants from Vercel Blob
-    // -------------------------------------------------
     const msg = String(err?.message || "").toLowerCase();
 
     const isNotFound =
@@ -75,27 +64,25 @@ async function readJSONBlob(filename) {
       msg.includes("not found") ||
       msg.includes("blobnotfound");
 
-    if (isNotFound) {
-      return [];
-    }
+    if (isNotFound) return [];
 
     throw err;
   }
 }
 
 // =====================================================
-// WRITE JSON BLOB (Private store)
+// WRITE JSON BLOB — OIDC mode (no token arg)
 // =====================================================
 
 async function writeJSONBlob(filename, data) {
   const key = blobKey(filename);
 
   await put(key, JSON.stringify(data, null, 2), {
-    access: "private",                          // ← was "public"
+    access: "private",
     contentType: "application/json",
     addRandomSuffix: false,
     allowOverwrite: true,
-    token: process.env.BLOB_READ_WRITE_TOKEN,
+    // ✅ no token — SDK uses OIDC
   });
 }
 
@@ -147,15 +134,12 @@ app.get("/health", (req, res) => {
 });
 
 // =====================================================
-// LIST FILES
+// LIST FILES — OIDC mode (no token arg)
 // =====================================================
 
 app.get("/api/json-files", async (req, res) => {
   try {
-    const { blobs } = await list({
-      prefix: "data/",
-      token: process.env.BLOB_READ_WRITE_TOKEN,
-    });
+    const { blobs } = await list({ prefix: "data/" }); // ✅ no token
 
     const files = blobs.map((b) =>
       b.pathname.replace(/^data\//, "")
