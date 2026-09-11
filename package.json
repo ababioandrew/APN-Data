@@ -8,6 +8,7 @@
     "dev": "nodemon server.js"
   },
   "dependencies": {
+    "@vercel/blob": "^2.8.0",
     "cors": "^2.8.5",
     "express": "^4.21.2",
     "helmet": "^7.2.0"
