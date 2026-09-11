@@ -41,14 +41,14 @@ function blobKey(filename) {
 
 // =====================================================
 // READ JSON BLOB — OIDC mode (no token arg)
+// Returns [] if the blob does not exist yet.
 // =====================================================
 
 async function readJSONBlob(filename) {
   const key = blobKey(filename);
 
   try {
-    const meta = await head(key); // ✅ no token — SDK uses OIDC
-
+    const meta = await head(key);
     const res = await fetch(meta.url, { cache: "no-store" });
 
     if (!res.ok) return [];
@@ -82,7 +82,6 @@ async function writeJSONBlob(filename, data) {
     contentType: "application/json",
     addRandomSuffix: false,
     allowOverwrite: true,
-    // ✅ no token — SDK uses OIDC
   });
 }
 
@@ -139,7 +138,7 @@ app.get("/health", (req, res) => {
 
 app.get("/api/json-files", async (req, res) => {
   try {
-    const { blobs } = await list({ prefix: "data/" }); // ✅ no token
+    const { blobs } = await list({ prefix: "data/" });
 
     const files = blobs.map((b) =>
       b.pathname.replace(/^data\//, "")
