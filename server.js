@@ -40,15 +40,15 @@ function blobKey(filename) {
 }
 
 // =====================================================
-// READ JSON BLOB — OIDC mode (no token arg)
-// Returns [] if the blob does not exist yet.
+// READ JSON BLOB — explicit token mode
 // =====================================================
 
 async function readJSONBlob(filename) {
   const key = blobKey(filename);
+  const token = process.env.BLOB_READ_WRITE_TOKEN;
 
   try {
-    const meta = await head(key);
+    const meta = await head(key, { token });
     const res = await fetch(meta.url, { cache: "no-store" });
 
     if (!res.ok) return [];
@@ -71,7 +71,7 @@ async function readJSONBlob(filename) {
 }
 
 // =====================================================
-// WRITE JSON BLOB — OIDC mode (no token arg)
+// WRITE JSON BLOB — explicit token mode
 // =====================================================
 
 async function writeJSONBlob(filename, data) {
@@ -82,6 +82,7 @@ async function writeJSONBlob(filename, data) {
     contentType: "application/json",
     addRandomSuffix: false,
     allowOverwrite: true,
+    token: process.env.BLOB_READ_WRITE_TOKEN,
   });
 }
 
@@ -98,6 +99,24 @@ function findRecordById(data, id) {
       String(item._id) === String(id)
   );
 }
+
+// =====================================================
+// DIAGNOSTIC
+// =====================================================
+
+app.get("/api/debug", (req, res) => {
+  res.json({
+    hasStoreId: !!process.env.BLOB_STORE_ID,
+    hasToken: !!process.env.BLOB_READ_WRITE_TOKEN,
+    hasPublicKey: !!process.env.BLOB_WEBHOOK_PUBLIC_KEY,
+    tokenPrefix: process.env.BLOB_READ_WRITE_TOKEN
+      ? process.env.BLOB_READ_WRITE_TOKEN.substring(0, 20) + "..."
+      : null,
+    storeId: process.env.BLOB_STORE_ID || null,
+    nodeEnv: process.env.NODE_ENV || null,
+    vercel: !!process.env.VERCEL,
+  });
+});
 
 // =====================================================
 // ROOT
@@ -133,12 +152,15 @@ app.get("/health", (req, res) => {
 });
 
 // =====================================================
-// LIST FILES — OIDC mode (no token arg)
+// LIST FILES — explicit token mode
 // =====================================================
 
 app.get("/api/json-files", async (req, res) => {
   try {
-    const { blobs } = await list({ prefix: "data/" });
+    const { blobs } = await list({
+      prefix: "data/",
+      token: process.env.BLOB_READ_WRITE_TOKEN,
+    });
 
     const files = blobs.map((b) =>
       b.pathname.replace(/^data\//, "")
@@ -147,9 +169,15 @@ app.get("/api/json-files", async (req, res) => {
     res.json({ success: true, count: files.length, files });
   } catch (error) {
     console.error("List files error:", error);
-    res
-      .status(500)
-      .json({ success: false, error: "Unable to list files." });
+    res.status(500).json({
+      success: false,
+      error: "Unable to list files.",
+      detail: error?.message || String(error),
+      env: {
+        hasToken: !!process.env.BLOB_READ_WRITE_TOKEN,
+        hasStoreId: !!process.env.BLOB_STORE_ID,
+      },
+    });
   }
 });
 
