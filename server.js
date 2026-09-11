@@ -78,7 +78,7 @@ async function writeJSONBlob(filename, data) {
   const key = blobKey(filename);
 
   await put(key, JSON.stringify(data, null, 2), {
-    access: "private",
+    access: "public",
     contentType: "application/json",
     addRandomSuffix: false,
     allowOverwrite: true,
