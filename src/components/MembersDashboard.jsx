@@ -1,658 +1,582 @@
-import React, { useEffect, useState } from "react";
+import React, { useCallback, useEffect, useState } from "react";
 import Swal from "sweetalert2";
 import "./MembersDashboard.css";
-import { useNavigate } from "react-router-dom";
-import { membersApi, fetchJSON, API_ENDPOINTS } from "../config/api";
 
-const initialFormData = {
+// --------------------------------------------------
+// CONFIGURATION (MOCKOON & BACKEND)
+// --------------------------------------------------
+
+const API_BASE_URL = (
+  process.env.REACT_APP_MOCKOON_BASE_URL ||
+  "https://playground.mockoon.com"
+).replace(/\/+$/, "");
+
+const API = {
+  // Point to your Express backend, NOT JSONBin directly
+  members: `/api/members`, 
+  expenses: `${API_BASE_URL}/expenses`,
+  announcements: `${API_BASE_URL}/announcements`,
+  enquiries: `${API_BASE_URL}/posts`,
+};
+
+// --------------------------------------------------
+// REUSABLE API HELPER
+// --------------------------------------------------
+
+async function fetchJSON(url, options = {}) {
+  const response = await fetch(url, {
+    ...options,
+    headers: {
+      Accept: "application/json",
+      "Content-Type": "application/json",
+      ...(options.headers || {}),
+    },
+  });
+
+  const responseText = await response.text();
+  let data = null;
+
+  if (responseText) {
+    try {
+      data = JSON.parse(responseText);
+    } catch {
+      data = responseText;
+    }
+  }
+
+  if (!response.ok) {
+    const message =
+      data && typeof data === "object"
+        ? data.message || data.error
+        : data;
+    throw new Error(message || `Request failed with status ${response.status}`);
+  }
+
+  return data;
+}
+
+// --------------------------------------------------
+// DATA NORMALIZERS
+// --------------------------------------------------
+
+function normalizeMember(member) {
+  return {
+    id: member.id || Date.now().toString(),
+    fullName: member.fullName || member.name || "",
+    gender: member.gender || "",
+    location: member.location || "",
+    dateOfBirth: member.dateOfBirth || "",
+    dateOfEntry: member.dateOfEntry || "",
+    contacts: member.contacts || member.phone || "",
+    email: member.email || "",
+    remarks: member.remarks || "",
+  };
+}
+
+function getRecords(data) {
+  if (Array.isArray(data)) return data;
+  if (Array.isArray(data?.data)) return data.data;
+  if (Array.isArray(data?.users)) return data.users;
+  if (Array.isArray(data?.posts)) return data.posts;
+  if (Array.isArray(data?.expenses)) return data.expenses;
+  if (Array.isArray(data?.announcements)) return data.announcements;
+  return [];
+}
+
+const emptyMember = {
   fullName: "",
   gender: "",
   location: "",
   dateOfBirth: "",
   dateOfEntry: "",
   contacts: "",
+  email: "",
   remarks: "",
 };
 
-const MembersDashboard = () => {
-  const navigate = useNavigate();
+const emptyExpense = {
+  title: "",
+  amount: "",
+  category: "",
+  date: new Date().toISOString().slice(0, 10),
+  description: "",
+};
+
+const emptyAnnouncement = {
+  title: "",
+  message: "",
+  date: new Date().toISOString().slice(0, 10),
+};
+
+// --------------------------------------------------
+// MAIN COMPONENT
+// --------------------------------------------------
+
+export default function MembersDashboard() {
+  const [activeTab, setActiveTab] = useState("members");
 
   const [members, setMembers] = useState([]);
-  const [formData, setFormData] = useState(initialFormData);
-  const [selectedMember, setSelectedMember] = useState(null);
-  const [loadingMembers, setLoadingMembers] = useState(false);
-  const [loadingHealth, setLoadingHealth] = useState(false);
+  const [expenses, setExpenses] = useState([]);
+  const [announcements, setAnnouncements] = useState([]);
+
+  const [memberForm, setMemberForm] = useState(emptyMember);
+  const [expenseForm, setExpenseForm] = useState(emptyExpense);
+  const [announcementForm, setAnnouncementForm] = useState(emptyAnnouncement);
+
+  const [editingMember, setEditingMember] = useState(null);
+
+  const [loading, setLoading] = useState(false);
   const [saving, setSaving] = useState(false);
-  const [deletingId, setDeletingId] = useState(null);
-  const [backendStatus, setBackendStatus] = useState(null);
-  const [enquiry, setEnquiry] = useState("");
+  const [backendStatus, setBackendStatus] = useState("Checking...");
+
+  const [enquiry, setEnquiry] = useState({ name: "", email: "", message: "" });
   const [sendingEnquiry, setSendingEnquiry] = useState(false);
 
-  // ==========================================
-  // HEALTH CHECK
-  // ==========================================
-
-  const checkHealth = async () => {
-    setLoadingHealth(true);
-
-    try {
-      const result = await fetchJSON(API_ENDPOINTS.health);
-
-      setBackendStatus({
-        success: true,
-        message: result.message || "API is reachable",
-        database: result.environment || "External JSON API",
-      });
-    } catch (error) {
-      console.error("Health check error:", error);
-
-      setBackendStatus({
-        success: false,
-        message: error.message || "Backend is not reachable",
-        error: error.message,
-      });
-    } finally {
-      setLoadingHealth(false);
-    }
+  // ------------------------------------------------
+  // ALERT HELPER
+  // ------------------------------------------------
+  const showAlert = (icon, title, text) => {
+    return Swal.fire({
+      icon,
+      title,
+      text,
+      timer: 3000,
+      timerProgressBar: true,
+      showConfirmButton: false,
+    });
   };
 
-  // ==========================================
-  // FETCH MEMBERS
-  // ==========================================
-
-  const fetchMembers = async () => {
-    setLoadingMembers(true);
-
+  // ------------------------------------------------
+  // LOAD MEMBERS (From Express Backend)
+  // ------------------------------------------------
+  const fetchMembers = useCallback(async () => {
     try {
-      const normalizedMembers = await membersApi.getAll();
-      setMembers(normalizedMembers);
+      setLoading(true);
+      
+      // Fetch from backend. It handles JSONBin securely.
+      const data = await fetchJSON(API.members);
+      
+      // The backend returns: { record: { members: [...] } }
+      const records = data?.record?.members || data?.record || [];
+      
+      setMembers(records.map(normalizeMember));
+      setBackendStatus("Connected (Cloud)");
     } catch (error) {
-      console.error("GET members error:", error);
-
-      Swal.fire({
-        icon: "error",
-        title: "Unable to Load Members",
-        text:
-          error.message ||
-          "Failed to load members. Please try again.",
-        confirmButtonColor: "#04732d",
-      });
+      console.error("Members loading error:", error);
+      setBackendStatus("Connection failed");
+      showAlert("error", "Unable to Load Members", error.message);
     } finally {
-      setLoadingMembers(false);
+      setLoading(false);
     }
-  };
-
-  // ==========================================
-  // INITIAL LOAD
-  // ==========================================
-
-  useEffect(() => {
-    checkHealth();
-    fetchMembers();
   }, []);
 
-  // ==========================================
-  // HANDLE INPUT
-  // ==========================================
-
-  const handleChange = (e) => {
-    const { name, value } = e.target;
-
-    setFormData((prev) => ({
-      ...prev,
-      [name]: value,
-    }));
-  };
-
-  // ==========================================
-  // OPEN EDIT FORM
-  // ==========================================
-
-  const handleEdit = (member) => {
-    setSelectedMember(member);
-
-    setFormData({
-      fullName: member.fullName || "",
-      gender: member.gender || "",
-      location: member.location || "",
-      dateOfBirth: member.dateOfBirth
-        ? String(member.dateOfBirth).substring(0, 10)
-        : "",
-      dateOfEntry: member.dateOfEntry
-        ? String(member.dateOfEntry).substring(0, 10)
-        : "",
-      contacts: member.contacts || "",
-      remarks: member.remarks || "",
-    });
-
-    window.scrollTo({
-      top: 0,
-      behavior: "smooth",
-    });
-  };
-
-  // ==========================================
-  // CANCEL EDIT
-  // ==========================================
-
-  const handleCancelEdit = () => {
-    setSelectedMember(null);
-    setFormData(initialFormData);
-  };
-
-  // ==========================================
-  // UPDATE MEMBER (PUT)
-  // ==========================================
-
-  const handleUpdate = async (e) => {
-    e.preventDefault();
-
-    if (!selectedMember) {
-      return;
+  // ------------------------------------------------
+  // LOAD EXPENSES / ANNOUNCEMENTS (Mockoon)
+  // ------------------------------------------------
+  const fetchExpenses = useCallback(async () => {
+    try {
+      const data = await fetchJSON(API.expenses);
+      setExpenses(getRecords(data));
+    } catch (error) {
+      setExpenses([]);
     }
+  }, []);
 
-    if (
-      !formData.fullName.trim() ||
-      !formData.gender ||
-      !formData.dateOfEntry
-    ) {
-      Swal.fire({
-        icon: "warning",
-        title: "Incomplete Form",
-        text: "Full name, gender and date of entry are required.",
-        confirmButtonColor: "#04732d",
-      });
-
-      return;
+  const fetchAnnouncements = useCallback(async () => {
+    try {
+      const data = await fetchJSON(API.announcements);
+      setAnnouncements(getRecords(data));
+    } catch (error) {
+      setAnnouncements([]);
     }
+  }, []);
 
-    setSaving(true);
+  useEffect(() => {
+    fetchMembers();
+    fetchExpenses();
+    fetchAnnouncements();
+  }, [fetchMembers, fetchExpenses, fetchAnnouncements]);
 
-    const payload = {
-      fullName: formData.fullName.trim(),
-      gender: formData.gender,
-      location: formData.location.trim(),
-      dateOfBirth: formData.dateOfBirth || null,
-      dateOfEntry: formData.dateOfEntry,
-      contacts: formData.contacts.trim(),
-      remarks: formData.remarks.trim(),
-    };
+  // ------------------------------------------------
+  // SAVE TO CLOUD HELPER
+  // ------------------------------------------------
+  const saveMembersToCloud = async (updatedMembers) => {
+    const payload = { members: updatedMembers };
+    
+    // Send PUT request to Express backend
+    await fetchJSON(API.members, {
+      method: "PUT",
+      body: JSON.stringify(payload),
+    });
+  };
+
+  // ------------------------------------------------
+  // MEMBER FORM HANDLING
+  // ------------------------------------------------
+  const handleMemberChange = (event) => {
+    const { name, value } = event.target;
+    setMemberForm((previous) => ({ ...previous, [name]: value }));
+  };
+
+  const resetMemberForm = () => {
+    setMemberForm(emptyMember);
+    setEditingMember(null);
+  };
+
+  const handleEditMember = (member) => {
+    setEditingMember(member.id);
+    setMemberForm({ ...emptyMember, ...member });
+    setActiveTab("members");
+    window.scrollTo({ top: 0, behavior: "smooth" });
+  };
+
+  // ------------------------------------------------
+  // ADD / UPDATE MEMBER
+  // ------------------------------------------------
+  const handleSaveMember = async (event) => {
+    event.preventDefault();
+
+    if (!memberForm.fullName.trim()) {
+      return showAlert("warning", "Missing Information", "Please enter the member's full name.");
+    }
 
     try {
-      const result = await membersApi.update(
-        selectedMember.id,
-        payload
-      );
+      setSaving(true);
+      let updatedList = [];
 
-      Swal.fire({
-        icon: "success",
-        title: "Member Updated",
-        text: result.message || "Member updated successfully!",
-        confirmButtonColor: "#04732d",
-      });
+      if (editingMember) {
+        updatedList = members.map((m) =>
+          m.id === editingMember ? { ...m, ...memberForm } : m
+        );
+      } else {
+        const newMember = { ...memberForm, id: Date.now().toString() };
+        updatedList = [...members, newMember];
+      }
 
-      setSelectedMember(null);
-      setFormData(initialFormData);
+      await saveMembersToCloud(updatedList);
+      
+      setMembers(updatedList);
+      resetMemberForm();
+      showAlert("success", editingMember ? "Member Updated" : "Member Added", "Saved to cloud successfully!");
 
-      await fetchMembers();
     } catch (error) {
-      console.error("PUT member error:", error);
-
-      Swal.fire({
-        icon: "error",
-        title: "Update Failed",
-        text:
-          error.message ||
-          "Failed to update member. Please try again.",
-        confirmButtonColor: "#d33",
-      });
+      console.error("Save error:", error);
+      showAlert("error", "Save Failed", error.message);
     } finally {
       setSaving(false);
     }
   };
 
-  // ==========================================
+  // ------------------------------------------------
   // DELETE MEMBER
-  // ==========================================
-
-  const handleDelete = async (id) => {
-    const member = members.find((item) => item.id === id);
-
+  // ------------------------------------------------
+  const handleDeleteMember = async (member) => {
     const confirmation = await Swal.fire({
       icon: "warning",
       title: "Delete Member?",
-      text: member
-        ? `Are you sure you want to delete ${member.fullName}?`
-        : "Are you sure you want to delete this member?",
+      text: `Are you sure you want to delete ${member.fullName}?`,
       showCancelButton: true,
-      confirmButtonColor: "#d33",
-      cancelButtonColor: "#6c757d",
       confirmButtonText: "Yes, Delete",
       cancelButtonText: "Cancel",
+      confirmButtonColor: "#d33",
     });
 
-    if (!confirmation.isConfirmed) {
-      return;
-    }
-
-    setDeletingId(id);
+    if (!confirmation.isConfirmed) return;
 
     try {
-      const result = await membersApi.delete(id);
-
-      Swal.fire({
-        icon: "success",
-        title: "Deleted",
-        text: result.message || "Member deleted successfully!",
-        confirmButtonColor: "#04732d",
-      });
-
-      setMembers((prev) =>
-        prev.filter((member) => member.id !== id)
-      );
-
-      if (selectedMember?.id === id) {
-        handleCancelEdit();
-      }
+      setSaving(true);
+      const updatedList = members.filter((m) => m.id !== member.id);
+      
+      await saveMembersToCloud(updatedList);
+      
+      setMembers(updatedList);
+      showAlert("success", "Member Deleted", "Removed from cloud successfully.");
     } catch (error) {
-      console.error("DELETE member error:", error);
-
-      Swal.fire({
-        icon: "error",
-        title: "Delete Failed",
-        text:
-          error.message ||
-          "Failed to delete member. Please try again.",
-        confirmButtonColor: "#d33",
-      });
+      showAlert("error", "Delete Failed", error.message);
     } finally {
-      setDeletingId(null);
+      setSaving(false);
     }
   };
 
-  // ==========================================
-  // SEND ENQUIRY
-  // ==========================================
+  // ------------------------------------------------
+  // EXPENSE FORM
+  // ------------------------------------------------
+  const handleExpenseChange = (event) => {
+    const { name, value } = event.target;
+    setExpenseForm((previous) => ({ ...previous, [name]: value }));
+  };
 
-  const handleSendEnquiry = async (e) => {
-    e.preventDefault();
-
-    if (!enquiry.trim()) {
-      Swal.fire({
-        icon: "warning",
-        title: "Message Required",
-        text: "Please enter an enquiry message.",
-        confirmButtonColor: "#04732d",
-      });
-
-      return;
+  const handleSaveExpense = async (event) => {
+    event.preventDefault();
+    if (!expenseForm.title.trim() || expenseForm.amount === "" || Number(expenseForm.amount) <= 0) {
+      return showAlert("warning", "Invalid Expense", "Enter an expense title and a valid amount.");
     }
 
-    setSendingEnquiry(true);
+    try {
+      setSaving(true);
+      await fetchJSON(API.expenses, {
+        method: "POST",
+        body: JSON.stringify({ ...expenseForm, amount: Number(expenseForm.amount) }),
+      });
+      await fetchExpenses();
+      setExpenseForm(emptyExpense);
+      showAlert("success", "Expense Saved", "The expense was submitted successfully.");
+    } catch (error) {
+      showAlert("error", "Unable to Save Expense", error.message);
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  // ------------------------------------------------
+  // ANNOUNCEMENT FORM
+  // ------------------------------------------------
+  const handleAnnouncementChange = (event) => {
+    const { name, value } = event.target;
+    setAnnouncementForm((previous) => ({ ...previous, [name]: value }));
+  };
+
+  const handleSaveAnnouncement = async (event) => {
+    event.preventDefault();
+    if (!announcementForm.title.trim() || !announcementForm.message.trim()) {
+      return showAlert("warning", "Missing Information", "Enter an announcement title and message.");
+    }
 
     try {
-      const result = await fetchJSON(API_ENDPOINTS.sendEnquiry, {
+      setSaving(true);
+      await fetchJSON(API.announcements, {
         method: "POST",
-        body: JSON.stringify({
-          message: enquiry.trim(),
-        }),
+        body: JSON.stringify(announcementForm),
       });
-
-      const whatsappNumber = "233548099730";
-      const whatsappMessage = encodeURIComponent(
-        result.whatsappCaption ||
-          `🔔 NEW CHURCH WEBSITE ENQUIRY\n\n${enquiry.trim()}\n\n📍 Source: Church Website`
-      );
-      const whatsappUrl = `https://wa.me/${whatsappNumber}?text=${whatsappMessage}`;
-
-      window.open(whatsappUrl, "_blank", "noopener,noreferrer");
-
-      Swal.fire({
-        icon: "success",
-        title: "Enquiry Sent",
-        text: "The enquiry was sent by email and WhatsApp has been opened with the message ready to send.",
-        confirmButtonColor: "#04732d",
-      });
-
-      setEnquiry("");
+      await fetchAnnouncements();
+      setAnnouncementForm(emptyAnnouncement);
+      showAlert("success", "Announcement Published", "Your announcement was submitted successfully.");
     } catch (error) {
-      console.error("Send enquiry error:", error);
+      showAlert("error", "Unable to Publish Announcement", error.message);
+    } finally {
+      setSaving(false);
+    }
+  };
 
-      Swal.fire({
-        icon: "error",
-        title: "Failed to Send",
-        text:
-          error.message ||
-          "Failed to send enquiry. Please try again.",
-        confirmButtonColor: "#d33",
+  // ------------------------------------------------
+  // ENQUIRY FORM
+  // ------------------------------------------------
+  const handleEnquiryChange = (event) => {
+    const { name, value } = event.target;
+    setEnquiry((previous) => ({ ...previous, [name]: value }));
+  };
+
+  const handleSendEnquiry = async (event) => {
+    event.preventDefault();
+    if (!enquiry.name.trim() || !enquiry.message.trim()) {
+      return showAlert("warning", "Missing Information", "Please enter your name and message.");
+    }
+
+    try {
+      setSendingEnquiry(true);
+      await fetchJSON(API.enquiries, {
+        method: "POST",
+        body: JSON.stringify(enquiry),
       });
+
+      const whatsappMessage = [
+        `Name: ${enquiry.name}`,
+        `Email: ${enquiry.email || "Not provided"}`,
+        `Message: ${enquiry.message}`,
+      ].join("\n");
+
+      window.open(`https://wa.me/233548099730?text=${encodeURIComponent(whatsappMessage)}`, "_blank");
+      setEnquiry({ name: "", email: "", message: "" });
+      showAlert("success", "Enquiry Submitted", "Your enquiry was submitted successfully.");
+    } catch (error) {
+      showAlert("error", "Unable to Submit Enquiry", error.message);
     } finally {
       setSendingEnquiry(false);
     }
   };
 
-  // ==========================================
-  // FORMAT DATE
-  // ==========================================
-
-  const formatDate = (date) => {
-    if (!date) return "-";
-    return String(date).substring(0, 10);
-  };
-
-  // ==========================================
+  // ------------------------------------------------
   // RENDER
-  // ==========================================
-
+  // ------------------------------------------------
   return (
     <div className="members-dashboard">
-      <div className="dashboard-header">
+      <header className="dashboard-header">
         <div>
-          <h1>Members Management</h1>
-          <p>View, update and manage church members.</p>
+          <h1>Church Administration</h1>
+          <p>Manage members, expenses and announcements.</p>
         </div>
-
-        <button
-          className="refresh-btn"
-          onClick={() => {
-            checkHealth();
-            fetchMembers();
-          }}
-        >
-          ↻ Refresh
-        </button>
-      </div>
-
-      {/* ==========================================
-          BACKEND STATUS
-      ========================================== */}
-
-      <section className="dashboard-card health-card">
-        <div className="section-heading">
-          <h2>Backend & Database Status</h2>
+        <div className="backend-status">
+          <span className={backendStatus.includes("Connected") ? "status-connected" : "status-disconnected"}>
+            ● {backendStatus}
+          </span>
+          <button type="button" onClick={fetchMembers}>Refresh</button>
         </div>
+      </header>
 
-        {loadingHealth ? (
-          <div className="status-loading">
-            Checking backend...
-          </div>
-        ) : backendStatus?.success ? (
-          <div className="health-success">
-            <span className="status-dot"></span>
+      <nav className="dashboard-tabs">
+        {[["members", "Members"], ["expenses", "Expenses"], ["announcements", "Announcements"], ["enquiries", "Enquiries"]].map(([key, label]) => (
+          <button key={key} type="button" className={activeTab === key ? "active" : ""} onClick={() => setActiveTab(key)}>
+            {label}
+          </button>
+        ))}
+      </nav>
 
-            <div>
-              <strong>Backend Online</strong>
-              <p>{backendStatus.message}</p>
+      {activeTab === "members" && (
+        <section className="dashboard-section">
+          <h2>{editingMember ? "Update Member Details" : "Register New Member"}</h2>
+          
+          <form onSubmit={handleSaveMember} className="dashboard-form">
+            <label>Full Name *</label>
+            <input type="text" name="fullName" value={memberForm.fullName} onChange={handleMemberChange} placeholder="Enter full name" required />
 
-              {backendStatus.database && (
-                <small>Database: {backendStatus.database}</small>
-              )}
-            </div>
-          </div>
-        ) : (
-          <div className="health-error">
-            <span className="status-dot"></span>
+            <label>Gender</label>
+            <select name="gender" value={memberForm.gender} onChange={handleMemberChange}>
+              <option value="">Select gender</option>
+              <option value="Male">Male</option>
+              <option value="Female">Female</option>
+              <option value="Other">Other</option>
+            </select>
 
-            <div>
-              <strong>Backend Offline</strong>
-              <p>
-                {backendStatus?.message ||
-                  "Unable to connect to backend."}
-              </p>
-            </div>
-          </div>
-        )}
-      </section>
+            <label>Location / Residential Address</label>
+            <input type="text" name="location" value={memberForm.location} onChange={handleMemberChange} placeholder="Enter residential address" />
 
-      {/* ==========================================
-          EDIT FORM
-      ========================================== */}
+            <label>Date of Birth</label>
+            <input type="date" name="dateOfBirth" value={memberForm.dateOfBirth} onChange={handleMemberChange} />
 
-      {selectedMember && (
-        <section className="dashboard-card edit-card">
-          <div className="section-heading">
-            <div>
-              <h2>Edit Member</h2>
-              <p>Member ID: {selectedMember.id}</p>
-            </div>
+            <label>Date of Entry / Joining Date</label>
+            <input type="date" name="dateOfEntry" value={memberForm.dateOfEntry} onChange={handleMemberChange} />
 
-            <button
-              type="button"
-              className="cancel-btn"
-              onClick={handleCancelEdit}
-            >
-              Cancel
-            </button>
-          </div>
+            <label>Contact Number</label>
+            <input type="tel" name="contacts" value={memberForm.contacts} onChange={handleMemberChange} placeholder="Enter contact number" />
 
-          <form
-            className="member-edit-form"
-            onSubmit={handleUpdate}
-          >
-            <div className="form-group">
-              <label>Full Name</label>
-              <input
-                type="text"
-                name="fullName"
-                value={formData.fullName}
-                onChange={handleChange}
-                placeholder="Enter full name"
-              />
-            </div>
+            <label>Email Address</label>
+            <input type="email" name="email" value={memberForm.email} onChange={handleMemberChange} placeholder="Enter email address" />
 
-            <div className="form-group">
-              <label>Gender</label>
-              <select
-                name="gender"
-                value={formData.gender}
-                onChange={handleChange}
-              >
-                <option value="">Select Gender</option>
-                <option value="Male">Male</option>
-                <option value="Female">Female</option>
-                <option value="Other">Other</option>
-              </select>
-            </div>
-
-            <div className="form-group">
-              <label>Location</label>
-              <input
-                type="text"
-                name="location"
-                value={formData.location}
-                onChange={handleChange}
-                placeholder="Enter location"
-              />
-            </div>
-
-            <div className="form-group">
-              <label>Date Of Birth</label>
-              <input
-                type="date"
-                name="dateOfBirth"
-                value={formData.dateOfBirth}
-                onChange={handleChange}
-              />
-            </div>
-
-            <div className="form-group">
-              <label>Date Of Entry</label>
-              <input
-                type="date"
-                name="dateOfEntry"
-                value={formData.dateOfEntry}
-                onChange={handleChange}
-              />
-            </div>
-
-            <div className="form-group">
-              <label>Contacts</label>
-              <input
-                type="tel"
-                name="contacts"
-                value={formData.contacts}
-                onChange={handleChange}
-                placeholder="Enter contact"
-              />
-            </div>
-
-            <div className="form-group full-width">
-              <label>Remarks</label>
-              <textarea
-                name="remarks"
-                value={formData.remarks}
-                onChange={handleChange}
-                placeholder="Enter remarks"
-                rows="4"
-              />
-            </div>
+            <label>Remarks / Additional Information</label>
+            <textarea name="remarks" value={memberForm.remarks} onChange={handleMemberChange} placeholder="Enter additional information" rows="4" />
 
             <div className="form-actions">
-              <button
-                type="button"
-                className="cancel-btn"
-                onClick={handleCancelEdit}
-              >
-                Cancel
+              <button type="submit" disabled={saving}>
+                {saving ? "Saving to Cloud..." : editingMember ? "Update Member" : "Register Member"}
               </button>
-
-              <button
-                type="submit"
-                className="save-btn"
-                disabled={saving}
-              >
-                {saving ? "Updating..." : "Update Member"}
+              <button type="button" className="secondary-button" onClick={resetMemberForm}>
+                {editingMember ? "Cancel Update" : "Clear Form"}
               </button>
             </div>
           </form>
+
+          <h2>Registered Members ({members.length})</h2>
+
+          {loading ? (
+            <p>Loading members from cloud...</p>
+          ) : members.length === 0 ? (
+            <p>No members found.</p>
+          ) : (
+            <div className="dashboard-table-wrapper">
+              <table className="dashboard-table">
+                <thead>
+                  <tr>
+                    <th>Full Name</th>
+                    <th>Gender</th>
+                    <th>Location</th>
+                    <th>Date of Birth</th>
+                    <th>Date of Entry</th>
+                    <th>Contact</th>
+                    <th>Email</th>
+                    <th>Remarks</th>
+                    <th>Actions</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {members.map((member) => (
+                    <tr key={member.id}>
+                      <td>{member.fullName}</td>
+                      <td>{member.gender || "—"}</td>
+                      <td>{member.location || "—"}</td>
+                      <td>{member.dateOfBirth || "—"}</td>
+                      <td>{member.dateOfEntry || "—"}</td>
+                      <td>{member.contacts || "—"}</td>
+                      <td>{member.email || "—"}</td>
+                      <td>{member.remarks || "—"}</td>
+                      <td className="table-actions">
+                        <button type="button" onClick={() => handleEditMember(member)}>Edit</button>
+                        <button type="button" className="delete-button" onClick={() => handleDeleteMember(member)}>Delete</button>
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          )}
         </section>
       )}
 
-      {/* ==========================================
-          MEMBERS TABLE
-      ========================================== */}
-
-      <section className="dashboard-card members-card">
-        <div className="section-heading">
-          <div>
-            <h2>Members</h2>
-            <p>
-              Total Members: <strong>{members.length}</strong>
-            </p>
-          </div>
-
-          <button
-            type="button"
-            className="refresh-btn"
-            onClick={() => navigate("/FullDetails")}
-          >
-            Add Member
-          </button>
-        </div>
-
-        {loadingMembers ? (
-          <div className="table-message">Loading members...</div>
-        ) : members.length === 0 ? (
-          <div className="table-message">No members found.</div>
-        ) : (
-          <div className="table-wrapper">
-            <table className="members-table">
+      {activeTab === "expenses" && (
+        <section className="dashboard-section">
+          <h2>Record Church Expense</h2>
+          <form onSubmit={handleSaveExpense} className="dashboard-form">
+            <input name="title" value={expenseForm.title} onChange={handleExpenseChange} placeholder="Expense title" required />
+            <input type="number" min="0.01" step="0.01" name="amount" value={expenseForm.amount} onChange={handleExpenseChange} placeholder="Amount (GH₵)" required />
+            <input name="category" value={expenseForm.category} onChange={handleExpenseChange} placeholder="Category" />
+            <input type="date" name="date" value={expenseForm.date} onChange={handleExpenseChange} />
+            <textarea name="description" value={expenseForm.description} onChange={handleExpenseChange} placeholder="Description" rows="3" />
+            <button type="submit" disabled={saving}>{saving ? "Saving..." : "Save Expense"}</button>
+          </form>
+          <h2>Expenses ({expenses.length})</h2>
+          <div className="dashboard-table-wrapper">
+            <table className="dashboard-table">
               <thead>
-                <tr>
-                  <th>ID</th>
-                  <th>Full Name</th>
-                  <th>Gender</th>
-                  <th>Location</th>
-                  <th>Date Of Birth</th>
-                  <th>Date Of Entry</th>
-                  <th>Contacts</th>
-                  <th>Remarks</th>
-                  <th>Actions</th>
-                </tr>
+                <tr><th>Title</th><th>Category</th><th>Amount</th><th>Date</th><th>Description</th></tr>
               </thead>
-
               <tbody>
-                {members.map((member) => (
-                  <tr key={member.id}>
-                    <td>{member.id}</td>
-                    <td className="member-name">
-                      {member.fullName || "-"}
-                    </td>
-                    <td>{member.gender || "-"}</td>
-                    <td>{member.location || "-"}</td>
-                    <td>{formatDate(member.dateOfBirth)}</td>
-                    <td>{formatDate(member.dateOfEntry)}</td>
-                    <td>{member.contacts || "-"}</td>
-                    <td className="remarks-cell">
-                      {member.remarks || "-"}
-                    </td>
-                    <td>
-                      <div className="action-buttons">
-                        <button
-                          className="edit-btn"
-                          onClick={() => handleEdit(member)}
-                        >
-                          Edit
-                        </button>
-
-                        <button
-                          className="delete-btn"
-                          onClick={() => handleDelete(member.id)}
-                          disabled={deletingId === member.id}
-                        >
-                          {deletingId === member.id
-                            ? "Deleting..."
-                            : "Delete"}
-                        </button>
-                      </div>
-                    </td>
+                {expenses.map((expense, index) => (
+                  <tr key={expense.id || index}>
+                    <td>{expense.title || "—"}</td><td>{expense.category || "—"}</td>
+                    <td>GH₵ {Number(expense.amount || 0).toFixed(2)}</td>
+                    <td>{expense.date || "—"}</td><td>{expense.description || "—"}</td>
                   </tr>
                 ))}
+                {expenses.length === 0 && <tr><td colSpan="5">No expenses found.</td></tr>}
               </tbody>
             </table>
           </div>
-        )}
-      </section>
+        </section>
+      )}
 
-      {/* ==========================================
-          ENQUIRY FORM
-      ========================================== */}
-
-      <section className="dashboard-card enquiry-card">
-        <div className="section-heading">
-          <div>
-            <h2>Send Enquiry</h2>
-            <p>
-              Share your candid opinion or ideas to improve
-              church growth.
-            </p>
+      {activeTab === "announcements" && (
+        <section className="dashboard-section">
+          <h2>Create Announcement</h2>
+          <form onSubmit={handleSaveAnnouncement} className="dashboard-form">
+            <input name="title" value={announcementForm.title} onChange={handleAnnouncementChange} placeholder="Announcement title" required />
+            <textarea name="message" value={announcementForm.message} onChange={handleAnnouncementChange} placeholder="Announcement message" rows="5" required />
+            <input type="date" name="date" value={announcementForm.date} onChange={handleAnnouncementChange} />
+            <button type="submit" disabled={saving}>{saving ? "Publishing..." : "Publish Announcement"}</button>
+          </form>
+          <h2>Announcements ({announcements.length})</h2>
+          <div className="announcement-list">
+            {announcements.map((announcement, index) => (
+              <article className="announcement-card" key={announcement.id || index}>
+                <h3>{announcement.title}</h3>
+                <p>{announcement.message}</p>
+                <small>{announcement.date || ""}</small>
+              </article>
+            ))}
+            {announcements.length === 0 && <p>No announcements found.</p>}
           </div>
-        </div>
+        </section>
+      )}
 
-        <form onSubmit={handleSendEnquiry}>
-          <div className="form-group">
-            <label htmlFor="enquiry">Message</label>
-
-            <textarea
-              id="enquiry"
-              value={enquiry}
-              onChange={(e) => setEnquiry(e.target.value)}
-              placeholder="Enter your enquiry..."
-              rows="5"
-            />
-          </div>
-
-          <button
-            type="submit"
-            className="send-btn"
-            disabled={sendingEnquiry}
-          >
-            {sendingEnquiry ? "Sending..." : "Send Enquiry"}
-          </button>
-        </form>
-      </section>
+      {activeTab === "enquiries" && (
+        <section className="dashboard-section">
+          <h2>Submit an Enquiry</h2>
+          <form onSubmit={handleSendEnquiry} className="dashboard-form">
+            <input name="name" value={enquiry.name} onChange={handleEnquiryChange} placeholder="Your name" required />
+            <input type="email" name="email" value={enquiry.email} onChange={handleEnquiryChange} placeholder="Your email address" />
+            <textarea name="message" value={enquiry.message} onChange={handleEnquiryChange} placeholder="Your message" rows="5" required />
+            <button type="submit" disabled={sendingEnquiry}>{sendingEnquiry ? "Submitting..." : "Submit Enquiry"}</button>
+          </form>
+        </section>
+      )}
     </div>
   );
-};
-
-export default MembersDashboard;
+}

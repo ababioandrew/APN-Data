@@ -1,5 +1,4 @@
 import React, { useEffect, useState } from "react";
-import { membersApi } from "../config/api";
 import "./BirthdayCelebrants.css";
 
 const BirthdayCelebrants = () => {
@@ -12,9 +11,17 @@ const BirthdayCelebrants = () => {
     const fetchBirthdays = async () => {
       try {
         setLoading(true);
-        const data = await membersApi.getBirthdays();
-        setBirthdays(data.birthdays || []);
-        setMonth(data.month || "");
+        
+        // Fetch from your new Express backend (which connects to JSONBin)
+        const response = await fetch("/api/members");
+        if (!response.ok) throw new Error("Failed to fetch members");
+        
+        const data = await response.json();
+        
+        // Handle JSONBin's nested structure
+        const members = data?.record?.members || data?.record || [];
+        
+        processBirthdays(members);
       } catch (error) {
         console.error("Failed to load birthday celebrants:", error);
         setBirthdays([]);
@@ -25,6 +32,52 @@ const BirthdayCelebrants = () => {
 
     fetchBirthdays();
   }, []);
+
+  const processBirthdays = (members) => {
+    const today = new Date();
+    const currentMonthIndex = today.getMonth();
+    const monthNames = [
+      "January", "February", "March", "April", "May", "June",
+      "July", "August", "September", "October", "November", "December"
+    ];
+    
+    setMonth(monthNames[currentMonthIndex]);
+
+    const currentMonthCelebrants = members
+      .filter((member) => {
+        if (!member.dateOfBirth) return false;
+        const birthDate = new Date(member.dateOfBirth);
+        if (isNaN(birthDate.getTime())) return false; // Invalid date check
+        return birthDate.getMonth() === currentMonthIndex;
+      })
+      .map((member) => {
+        const birthDate = new Date(member.dateOfBirth);
+        let age = today.getFullYear() - birthDate.getFullYear();
+        
+        // Adjust age if birthday hasn't happened yet this month
+        const hasHadBirthdayThisYear = 
+          today.getMonth() > birthDate.getMonth() || 
+          (today.getMonth() === birthDate.getMonth() && today.getDate() >= birthDate.getDate());
+          
+        if (!hasHadBirthdayThisYear) {
+          age--;
+        }
+
+        return {
+          ...member,
+          age: age > 0 ? age : null,
+        };
+      })
+      .sort((a, b) => {
+        // Sort by the specific day of the month
+        const dayA = new Date(a.dateOfBirth).getDate();
+        const dayB = new Date(b.dateOfBirth).getDate();
+        return dayA - dayB; 
+      });
+
+    setBirthdays(currentMonthCelebrants);
+  };
+
   if (loading) {
     return (
       <section className="birthday-section birthday-loading">
@@ -34,8 +87,7 @@ const BirthdayCelebrants = () => {
     );
   }
 
-  // Do not display the section when nobody has a birthday
-  // in the current month.
+  // Do not display the section when nobody has a birthday in the current month
   if (birthdays.length === 0) {
     return null;
   }
@@ -68,17 +120,13 @@ const BirthdayCelebrants = () => {
             className="birthday-preview-button"
             onClick={() => setShowPreview(true)}
           >
-            👁 Preview
+            👁 Preview All
           </button>
         </div>
 
         <div className="birthday-grid">
-
           {birthdays.map((member) => (
-            <div
-              className="birthday-card"
-              key={member.id}
-            >
+            <div className="birthday-card" key={member.id}>
               <div className="birthday-icon">
                 🎂
               </div>
@@ -104,7 +152,6 @@ const BirthdayCelebrants = () => {
               </div>
             </div>
           ))}
-
         </div>
       </section>
 
@@ -117,7 +164,6 @@ const BirthdayCelebrants = () => {
             className="birthday-modal"
             onClick={(event) => event.stopPropagation()}
           >
-
             <button
               className="birthday-close"
               onClick={() => setShowPreview(false)}
@@ -139,12 +185,8 @@ const BirthdayCelebrants = () => {
             </p>
 
             <div className="birthday-preview-list">
-
               {birthdays.map((member) => (
-                <div
-                  className="birthday-preview-item"
-                  key={member.id}
-                >
+                <div className="birthday-preview-item" key={member.id}>
                   <div className="preview-date">
                     {new Date(member.dateOfBirth).getDate()}
                   </div>
@@ -164,13 +206,11 @@ const BirthdayCelebrants = () => {
                   </div>
                 </div>
               ))}
-
             </div>
 
             <div className="birthday-modal-footer">
               🎊 Happy Birthday to all our celebrants!
             </div>
-
           </div>
         </div>
       )}

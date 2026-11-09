@@ -1,0 +1,27 @@
+
+{
+  "members": [
+    {
+      "id": 1,
+      "fullName": "John Mensah",
+      "gender": "Male",
+      "location": "Accra, Ghana",
+      "dateOfBirth": "1990-05-15",
+      "dateOfEntry": "2022-01-10",
+      "contacts": "0240000000",
+      "email": "john@example.com",
+      "remarks": "Choir member"
+    },
+    {
+      "id": 2,
+      "fullName": "Mary Asante",
+      "gender": "Female",
+      "location": "Tema, Ghana",
+      "dateOfBirth": "1995-08-20",
+      "dateOfEntry": "2023-04-12",
+      "contacts": "0200000000",
+      "email": "mary@example.com",
+      "remarks": "Youth ministry"
+    }
+  ]
+}

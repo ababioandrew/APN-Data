@@ -11,19 +11,27 @@ const app = express();
 // =====================================================
 // REQUIRED ENV VARS
 // =====================================================
-
 const requiredEnv = ["EMAIL_USER", "EMAIL_PASS", "ENQUIRY_EMAIL"];
-
 for (const key of requiredEnv) {
   if (!process.env[key]) {
-    console.error(`⚠️  Missing environment variable: ${key}`);
+    console.warn(`⚠️  Missing environment variable: ${key}`);
   }
+}
+
+// JSONBin Config (Added .trim() to remove hidden spaces/newlines that break Windows .env files)
+const RAW_BIN_ID = process.env.JSONBIN_BIN_ID || process.env.REACT_APP_JSONBIN_BIN_ID || "";
+const RAW_MASTER_KEY = process.env.JSONBIN_MASTER_KEY || process.env.REACT_APP_JSONBIN_MASTER_KEY || "";
+
+const JSONBIN_BIN_ID = RAW_BIN_ID.trim();
+const JSONBIN_MASTER_KEY = RAW_MASTER_KEY.trim();
+
+if (!JSONBIN_BIN_ID || !JSONBIN_MASTER_KEY) {
+  console.warn("⚠️  Missing JSONBin environment variables. Data will not save.");
 }
 
 // =====================================================
 // MIDDLEWARE
 // =====================================================
-
 app.use(
   cors({
     origin: true,
@@ -36,7 +44,6 @@ app.use(express.urlencoded({ extended: true }));
 // =====================================================
 // EMAIL TRANSPORTER
 // =====================================================
-
 let transporter = null;
 
 try {
@@ -57,9 +64,8 @@ try {
 }
 
 // =====================================================
-// HEALTH CHECK
+// HEALTH CHECK & DEBUG
 // =====================================================
-
 app.get("/api/health", (req, res) => {
   res.json({
     success: true,
@@ -70,10 +76,81 @@ app.get("/api/health", (req, res) => {
   });
 });
 
+// DEBUG ROUTE: Visit http://localhost:5000/api/debug-jsonbin to see what the server sees
+app.get("/api/debug-jsonbin", (req, res) => {
+  res.json({
+    binIdLength: JSONBIN_BIN_ID.length,
+    binIdStart: JSONBIN_BIN_ID.substring(0, 4) + "...",
+    keyLength: JSONBIN_MASTER_KEY.length,
+    keyStart: JSONBIN_MASTER_KEY.substring(0, 4) + "...",
+    warning: "If key length is less than 64, the '$' signs were stripped by dotenv."
+  });
+});
+
+// =====================================================
+// MEMBERS: FETCH FROM JSONBIN.IO
+// =====================================================
+app.get("/api/members", async (req, res) => {
+  try {
+    if (!JSONBIN_BIN_ID || !JSONBIN_MASTER_KEY) {
+      return res.status(500).json({ error: "Server missing JSONBin credentials." });
+    }
+
+    const response = await fetch(`https://api.jsonbin.io/v3/b/${JSONBIN_BIN_ID}/latest`, {
+      method: "GET",
+      headers: {
+        "X-Master-Key": JSONBIN_MASTER_KEY,
+        "Content-Type": "application/json",
+      },
+    });
+
+    const data = await response.json();
+    
+    if (!response.ok) {
+      throw new Error(data.message || "Failed to fetch from JSONBin");
+    }
+
+    res.json(data);
+  } catch (error) {
+    console.error("Fetch members error:", error.message);
+    res.status(500).json({ error: error.message });
+  }
+});
+
+// =====================================================
+// MEMBERS: SAVE TO JSONBIN.IO
+// =====================================================
+app.put("/api/members", async (req, res) => {
+  try {
+    if (!JSONBIN_BIN_ID || !JSONBIN_MASTER_KEY) {
+      return res.status(500).json({ error: "Server missing JSONBin credentials." });
+    }
+
+    const response = await fetch(`https://api.jsonbin.io/v3/b/${JSONBIN_BIN_ID}`, {
+      method: "PUT",
+      headers: {
+        "X-Master-Key": JSONBIN_MASTER_KEY,
+        "Content-Type": "application/json",
+      },
+      body: JSON.stringify(req.body),
+    });
+
+    const data = await response.json();
+
+    if (!response.ok) {
+      throw new Error(data.message || "Failed to save to JSONBin");
+    }
+
+    res.json(data);
+  } catch (error) {
+    console.error("Save members error:", error.message);
+    res.status(500).json({ error: error.message });
+  }
+});
+
 // =====================================================
 // SEND ENQUIRY EMAIL
 // =====================================================
-
 const escapeHtml = (value = "") =>
   String(value)
     .replace(/&/g, "&amp;")
@@ -137,7 +214,6 @@ app.post("/api/send-enquiry", async (req, res) => {
 // =====================================================
 // 404 + ERROR HANDLERS
 // =====================================================
-
 app.use((req, res) => {
   res.status(404).json({
     success: false,
@@ -157,7 +233,6 @@ app.use((error, req, res, next) => {
 // =====================================================
 // LOCAL DEV SERVER
 // =====================================================
-
 const PORT = process.env.PORT || 5000;
 
 if (process.env.NODE_ENV !== "production") {
@@ -169,5 +244,4 @@ if (process.env.NODE_ENV !== "production") {
 // =====================================================
 // EXPORT FOR VERCEL
 // =====================================================
-
 export default app;

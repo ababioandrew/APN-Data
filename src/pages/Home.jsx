@@ -1,6 +1,6 @@
 import React, { useEffect, useRef, useState } from 'react';
 import { Link } from 'react-router-dom';
-import { FaComments, FaVideo } from 'react-icons/fa';
+import { FaComments, FaVideo, FaWhatsapp, FaPaperclip, FaTimes } from 'react-icons/fa';
 
 import Footer from '../components/Footer';
 import BirthdayCelebrants from '../components/BirthdayCelebrants';
@@ -40,8 +40,8 @@ const churchSearchTheme = {
 
   menu: (base) => ({
     ...base,
-    backgroundColor: "#FFFFFF", 
-    border: "2px solid #C49A3A", 
+    backgroundColor: "#FFFFFF",
+    border: "2px solid #C49A3A",
     borderRadius: "0 0 10px 10px",
     maxHeight: "340px",
     overflowY: "auto",
@@ -53,11 +53,11 @@ const churchSearchTheme = {
   option: (base, state) => ({
     ...base,
     backgroundColor: state.isSelected
-      ? "#C49A3A" 
+      ? "#C49A3A"
       : state.isFocused
-        ? "#F1F5F9" 
-        : "#FFFFFF", 
-    color: "#0F172A", 
+        ? "#F1F5F9"
+        : "#FFFFFF",
+    color: "#0F172A",
     padding: "14px 16px",
     cursor: "pointer",
     transition: "background-color 0.2s ease",
@@ -112,6 +112,12 @@ const marqueeMessages = [
   '✨ Special Event This Sunday • Youth Fellowship • Community Outreach • Join Us! ✨',
   '✨ Answered Prayer Network • A place Where destinies are restored and rearranged. • Pray Until the soul cracks ✨',
   '✨ 30 Days of Menthorship Through The Word. Listen discover and share. God richly bless you ✨',
+];
+
+const upcomingEvents = [
+  { id: 1, title: 'Commanding Your Week', date: 'Every Sunday', time: '3:00 PM', location: 'Main Sanctuary' },
+  { id: 2, title: 'Sunday Celebration Service', date: 'Nov 5, 2026', time: '9:00 AM', location: 'Main Sanctuary' },
+  { id: 3, title: 'Night of Answered Prayers', date: 'Nov 20, 2026', time: '10:00 PM', location: 'Main Sanctuary' }
 ];
 
 const localVideos = [
@@ -387,9 +393,9 @@ function SearchableSelect({ id, label, value, onChange, options, placeholder, no
   const placeholderStyle = getStyle('placeholder', { color: '#888' });
 
   return (
-    <div 
-      className="media-control-group" 
-      ref={containerRef} 
+    <div
+      className="media-control-group"
+      ref={containerRef}
       style={{ position: 'relative' }}
       onMouseLeave={() => setOpen(false)}
     >
@@ -426,25 +432,25 @@ function SearchableSelect({ id, label, value, onChange, options, placeholder, no
         }}
       />
       {open && (
-        <ul 
+        <ul
           style={{
-            position: 'absolute', 
-            top: 'calc(100% + 4px)', 
-            left: 0, 
-            right: 0, 
+            position: 'absolute',
+            top: 'calc(100% + 4px)',
+            left: 0,
+            right: 0,
             zIndex: 100,
-            backgroundColor: '#FFFFFF', 
-            border: '2px solid #C49A3A', 
+            backgroundColor: '#FFFFFF',
+            border: '2px solid #C49A3A',
             borderRadius: '10px',
-            maxHeight: '320px', 
-            overflowY: 'auto', 
-            margin: 0, 
+            maxHeight: '320px',
+            overflowY: 'auto',
+            margin: 0,
             padding: '0',
-            listStyle: 'none', 
+            listStyle: 'none',
             boxShadow: '0 10px 25px rgba(15, 23, 42, 0.15)',
-            marginTop: '0px', 
-          }} 
-          role="listbox" 
+            marginTop: '0px',
+          }}
+          role="listbox"
           onMouseDown={(e) => e.preventDefault()}
         >
           {filteredOptions.length === 0 ? (
@@ -513,13 +519,20 @@ export default function Home() {
   const [selectedCommandingWeekIndex, setSelectedCommandingWeekIndex] = useState('');
   const [selectedImageIndex, setSelectedImageIndex] = useState(0);
 
+  // --- PRAYER REQUEST STATES ---
+  const [prayerName, setPrayerName] = useState('');
+  const [prayerEmail, setPrayerEmail] = useState('');
+  const [prayerRequest, setPrayerRequest] = useState('');
+  const [selectedFiles, setSelectedFiles] = useState([]);
+  // -----------------------------
+
   const playableMedia = mediaItems.filter((item) => item.type === 'video' || item.type === 'audio');
   const [selectedMediaIndex] = useState(0);
 
   const commandingWeekItem = mediaItems.find((item) => item.type === 'commandingWeek');
   const audioItems = mediaItems.filter((item) => item.type === 'audio');
   const imageItems = mediaItems.filter((item) => item.type === 'image');
-  
+
   const isSingleImage = imageItems.length === 1;
 
   const selectedAudio = selectedAudioIndex !== '' ? audioItems[selectedAudioIndex] : null;
@@ -535,8 +548,8 @@ export default function Home() {
   const commercialVideoRef = useRef(null);
   const commercialTimeoutRef = useRef(null);
   const commercialShowingRef = useRef(false);
-  
-  const commercialAudioRef = useRef(null); 
+
+  const commercialAudioRef = useRef(null);
   const audioRef = useRef(null);
 
   const [randomMessage] = useState(() => {
@@ -589,6 +602,70 @@ export default function Home() {
     return src;
   };
 
+  // --- FILE UPLOAD HANDLER ---
+  const handleFileChange = (e) => {
+    if (e.target.files && e.target.files.length > 0) {
+      const filesArray = Array.from(e.target.files);
+      setSelectedFiles((prev) => [...prev, ...filesArray]);
+    }
+  };
+
+  const removeFile = (indexToRemove) => {
+    setSelectedFiles((prev) => prev.filter((_, index) => index !== indexToRemove));
+  };
+
+  // --- PRAYER REQUEST SUBMIT HANDLER ---
+  const handlePrayerSubmit = async (e) => {
+    e.preventDefault();
+    
+    // Construct the message text formatting with WhatsApp markdown
+    const message = `*New Prayer Request*\n\n` +
+                    `*Name:* ${prayerName || 'Anonymous'}\n` +
+                    `*Email:* ${prayerEmail || 'Not provided'}\n\n` +
+                    `*Prayer Request:*\n${prayerRequest}`;
+
+    // Check if there are files attached
+    if (selectedFiles.length > 0) {
+      // Check if the browser supports sharing files (mostly mobile devices)
+      if (navigator.canShare && navigator.canShare({ files: selectedFiles })) {
+        try {
+          await navigator.share({
+            title: 'Prayer Request',
+            text: message,
+            files: selectedFiles,
+          });
+          
+          // Clear form on success
+          setPrayerName('');
+          setPrayerEmail('');
+          setPrayerRequest('');
+          setSelectedFiles([]);
+          return; // Exit so it doesn't trigger the wa.me fallback
+        } catch (error) {
+          console.log('Share failed or was cancelled', error);
+          // If they cancel, do nothing. If it fails, fall through to wa.me.
+        }
+      } else {
+        // Fallback for Desktop Browsers that don't support file sharing
+        alert("Your device or browser does not support attaching files directly via web links. The prayer text will be sent to WhatsApp, but you will need to manually attach the files once WhatsApp opens.");
+      }
+    }
+
+    // Standard wa.me fallback (Text only or if no files selected)
+    const encodedMessage = encodeURIComponent(message);
+    const phoneNumber = '233501195737'; 
+    const whatsappUrl = `https://wa.me/${phoneNumber}?text=${encodedMessage}`;
+    
+    window.open(whatsappUrl, '_blank', 'noopener,noreferrer');
+
+    // Clear form
+    setPrayerName('');
+    setPrayerEmail('');
+    setPrayerRequest('');
+    setSelectedFiles([]);
+  };
+  // -------------------------------------
+
   const closeCommercial = () => {
     commercialShowingRef.current = false;
     if (commercialTimeoutRef.current) {
@@ -617,7 +694,7 @@ export default function Home() {
 
     commercialTimeoutRef.current = setTimeout(() => {
       closeCommercial();
-    }, 10000); 
+    }, 10000);
   };
 
   useEffect(() => {
@@ -644,7 +721,7 @@ export default function Home() {
     if (commercialAudioRef.current) {
       const audio = commercialAudioRef.current;
       audio.currentTime = 0;
-      audio.volume = 0.3; 
+      audio.volume = 0.3;
       audio.play().catch((error) => {
         console.warn('⚠️ Commercial audio autoplay was blocked:', error);
       });
@@ -706,14 +783,14 @@ export default function Home() {
             preload="auto"
             controls={false}
           />
-          
+
           <div className="commercial-timer">Advertisement</div>
         </div>
       )}
 
-      <audio 
-        ref={commercialAudioRef} 
-        src="/audios/commercial.mp3" 
+      <audio
+        ref={commercialAudioRef}
+        src="/audios/commercial.mp3"
         preload="auto"
         style={{ display: 'none' }}
       />
@@ -732,6 +809,7 @@ export default function Home() {
             <div className="hero-actions">
               <Link to="/about" className="btn-outline-white hero-anim-btn">Discover Answered Prayer Network</Link>
               <Link to="/contact" className="btn-gold hero-anim-btn">Plan Your Visit</Link>
+              <Link to="/meeting" className="btn-gold hero-anim-btn">🎥 Join Live Meeting</Link>
             </div>
           </div>
         </section>
@@ -755,7 +833,7 @@ export default function Home() {
                       htmlFor="picture-select"
                       style={{
                         display: 'block',
-                        background: '#F8FAFC', 
+                        background: '#F8FAFC',
                         color: '#0F172A',
                         padding: '12px 16px',
                         borderRadius: '10px',
@@ -794,25 +872,21 @@ export default function Home() {
                   options={audioItems.map((item, index) => ({ value: index, label: item.title }))}
                   placeholder="Type to search audios..."
                   noResultsText="No audios found"
-                  styles={churchSearchTheme} 
+                  styles={churchSearchTheme}
                 />
 
                 {selectedAudio && (
                   <div className="selected-audio">
                     <p style={titleBarStyle}>{selectedAudio.title}</p>
 
-                    <iframe
-                      src={`https://drive.google.com/file/d/${getDriveFileId(selectedAudio.src)}/preview`}
-                      width="100%"
-                      height="80"
-                      allow="autoplay"
-                      frameBorder="0"
-                      style={{ borderRadius: '8px', marginBottom: '14px' }}
-                      title={selectedAudio.title}
-                    />
-
-                    <audio key={selectedAudio.src} ref={audioRef} preload="metadata" style={{ display: 'none' }}>
-                      <source src={selectedAudio.src} />
+                    <audio
+                      key={selectedAudio.src}
+                      ref={audioRef}
+                      controls
+                      style={{ width: '100%', marginBottom: '14px', borderRadius: '8px' }}
+                    >
+                      <source src={getAudioDownloadUrl(selectedAudio.src)} type="audio/mpeg" />
+                      Your browser does not support the audio element.
                     </audio>
 
                     <a
@@ -848,7 +922,7 @@ export default function Home() {
                   options={(commandingWeekItem?.videos || []).map((video, index) => ({ value: index, label: video.title }))}
                   placeholder="Type to search videos..."
                   noResultsText="No videos found"
-                  styles={churchSearchTheme} 
+                  styles={churchSearchTheme}
                 />
 
                 {selectedCommandingWeekVideo && (
@@ -879,13 +953,13 @@ export default function Home() {
                 {imageItems.length > 0 && (
                   <img
                     src={
-                      isSingleImage 
-                        ? imageItems[0].src 
+                      isSingleImage
+                        ? imageItems[0].src
                         : imageItems[selectedImageIndex]?.src || imageItems[currentIndex].src
                     }
                     alt={
-                      isSingleImage 
-                        ? imageItems[0].alt 
+                      isSingleImage
+                        ? imageItems[0].alt
                         : imageItems[selectedImageIndex]?.alt || imageItems[currentIndex].alt
                     }
                   />
@@ -893,6 +967,152 @@ export default function Home() {
               </div>
             </div>
 
+          </div>
+        </section>
+
+        {/* UPCOMING EVENTS SECTION */}
+        <section className="events-section" style={{ padding: '60px 20px', backgroundColor: '#F8FAFC' }}>
+          <div className="events-inner" style={{ maxWidth: '1200px', margin: '0 auto' }}>
+            <p className="section-eyebrow" style={{ textAlign: 'center' }}>Mark Your Calendar</p>
+            <h2 className="section-title" style={{ textAlign: 'center', color: '#0F172A' }}>Upcoming Events</h2>
+            <span className="gold-rule centered" />
+
+            <div className="events-grid" style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(300px, 1fr))', gap: '20px', marginTop: '40px' }}>
+              {upcomingEvents.map((event) => (
+                <div key={event.id} style={{ background: '#fff', padding: '24px', borderRadius: '12px', border: '1px solid #E2E8F0', boxShadow: '0 4px 6px rgba(0,0,0,0.05)' }}>
+                  <h3 style={{ color: '#C49A3A', fontSize: '1.2rem', marginBottom: '10px' }}>{event.title}</h3>
+                  <p style={{ color: '#64748B', marginBottom: '5px' }}>📅 {event.date}</p>
+                  <p style={{ color: '#64748B', marginBottom: '5px' }}>⏰ {event.time}</p>
+                  <p style={{ color: '#64748B', marginBottom: '20px' }}>📍 {event.location}</p>
+                  <div style={{ display: 'flex', gap: '10px', flexWrap: 'wrap' }}>
+                    <Link to="/contact" style={{ display: 'inline-block', padding: '10px 20px', background: '#0F172A', color: '#fff', borderRadius: '6px', textDecoration: 'none', fontWeight: 600 }}>RSVP / Learn More</Link>
+                    <Link to="/meeting" style={{ display: 'inline-block', padding: '10px 20px', background: '#C49A3A', color: '#0F172A', borderRadius: '6px', textDecoration: 'none', fontWeight: 600 }}>🎥 Join Live</Link>
+                  </div>
+                </div>
+              ))}
+            </div>
+          </div>
+        </section>
+
+        {/* PRAYER REQUEST SECTION */}
+        <section className="prayer-request-section" style={{ padding: '60px 20px', background: '#17365D', color: '#fff' }}>
+          <div style={{ maxWidth: '800px', margin: '0 auto', textAlign: 'center' }}>
+            <h2 style={{ fontSize: '2rem', marginBottom: '10px', color: '#C49A3A' }}>Need Prayer?</h2>
+            <p style={{ marginBottom: '30px', fontSize: '1.1rem' }}>Our intercessory team is ready to stand in agreement with you. Submit your request below.</p>
+
+            <form style={{ display: 'flex', flexDirection: 'column', gap: '15px' }} onSubmit={handlePrayerSubmit}>
+              <input 
+                type="text" 
+                placeholder="Your Name (Optional)" 
+                value={prayerName}
+                onChange={(e) => setPrayerName(e.target.value)}
+                style={{ padding: '14px', borderRadius: '8px', border: 'none', fontSize: '1rem' }} 
+              />
+              <input 
+                type="email" 
+                placeholder="Your Email (Optional)" 
+                value={prayerEmail}
+                onChange={(e) => setPrayerEmail(e.target.value)}
+                style={{ padding: '14px', borderRadius: '8px', border: 'none', fontSize: '1rem' }} 
+              />
+              <textarea 
+                placeholder="Type your prayer request here..." 
+                rows="4" 
+                value={prayerRequest}
+                onChange={(e) => setPrayerRequest(e.target.value)}
+                style={{ padding: '14px', borderRadius: '8px', border: 'none', fontSize: '1rem', resize: 'vertical' }} 
+                required
+              ></textarea>
+
+              {/* FILE ATTACHMENT UI */}
+              <div style={{ display: 'flex', flexDirection: 'column', gap: '10px', alignItems: 'center', marginTop: '5px' }}>
+                <label 
+                  htmlFor="file-upload" 
+                  style={{ 
+                    cursor: 'pointer', 
+                    background: 'rgba(255,255,255,0.1)', 
+                    padding: '12px 20px', 
+                    borderRadius: '8px', 
+                    display: 'flex', 
+                    alignItems: 'center', 
+                    gap: '8px',
+                    fontWeight: 600,
+                    width: '100%',
+                    justifyContent: 'center'
+                  }}
+                >
+                  <FaPaperclip /> Attach Files (Images, Audio, Video, PDF)
+                </label>
+                <input 
+                  id="file-upload" 
+                  type="file" 
+                  multiple 
+                  accept="image/*,audio/*,video/*,.pdf,.doc,.docx,.txt" 
+                  onChange={handleFileChange} 
+                  style={{ display: 'none' }} 
+                />
+
+                {/* Selected Files Preview */}
+                {selectedFiles.length > 0 && (
+                  <div style={{ width: '100%', display: 'flex', flexWrap: 'wrap', gap: '8px', justifyContent: 'center', marginTop: '10px' }}>
+                    {selectedFiles.map((file, index) => (
+                      <div key={index} style={{ display: 'flex', alignItems: 'center', gap: '6px', background: 'rgba(255,255,255,0.15)', padding: '6px 12px', borderRadius: '20px', fontSize: '0.85rem' }}>
+                        <span>{file.name}</span>
+                        <button 
+                          type="button" 
+                          onClick={() => removeFile(index)}
+                          style={{ background: 'transparent', border: 'none', color: '#ff6b6b', cursor: 'pointer', display: 'flex', alignItems: 'center' }}
+                        >
+                          <FaTimes />
+                        </button>
+                      </div>
+                    ))}
+                  </div>
+                )}
+              </div>
+
+              <button 
+                type="submit" 
+                style={{ 
+                  display: 'flex',
+                  alignItems: 'center',
+                  justifyContent: 'center',
+                  gap: '10px',
+                  padding: '16px', 
+                  background: '#C49A3A', 
+                  color: '#0F172A', 
+                  border: 'none', 
+                  borderRadius: '8px', 
+                  fontSize: '1.1rem', 
+                  fontWeight: 'bold', 
+                  cursor: 'pointer', 
+                  transition: '0.3s',
+                  marginTop: '10px'
+                }}
+              >
+                <FaWhatsapp size={24} /> Submit Prayer Request
+              </button>
+            </form>
+
+            {/* Live prayer CTA */}
+            <div style={{ marginTop: '30px', paddingTop: '30px', borderTop: '1px solid rgba(255,255,255,0.2)' }}>
+              <p style={{ marginBottom: '15px', fontSize: '1rem' }}>Prefer to pray with us live?</p>
+              <Link
+                to="/meeting"
+                style={{
+                  display: 'inline-block',
+                  padding: '14px 28px',
+                  background: '#C49A3A',
+                  color: '#0F172A',
+                  borderRadius: '8px',
+                  textDecoration: 'none',
+                  fontWeight: 'bold',
+                  fontSize: '1.05rem',
+                }}
+              >
+                🎥 Join Live Prayer Meeting
+              </Link>
+            </div>
           </div>
         </section>
 
@@ -916,8 +1136,9 @@ export default function Home() {
             ))}
           </div>
 
-          <div className="welcome-cta">
+          <div className="welcome-cta" style={{ display: 'flex', justifyContent: 'center', gap: '14px', flexWrap: 'wrap' }}>
             <Link to="/services" className="btn-gold">Explore Our Ministries</Link>
+            <Link to="/meeting" className="btn-outline-gold">🎥 Join Live Meeting</Link>
           </div>
         </section>
 
@@ -932,9 +1153,10 @@ export default function Home() {
               <p className="why-desc">
                 Our desire is to create a Christ-centered community where people can encounter God, grow spiritually, discover their gifts, build lasting relationships, and make a positive difference in the lives of others.
               </p>
-              <Link to="/about" className="btn-outline-gold" style={{ marginTop: 32, display: 'inline-block' }}>
-                Learn More About Answered Prayer Network
-              </Link>
+              <div style={{ marginTop: 32, display: 'flex', gap: '14px', flexWrap: 'wrap' }}>
+                <Link to="/about" className="btn-outline-gold">Learn More About Answered Prayer Network</Link>
+                <Link to="/meeting" className="btn-gold">🎥 Join Live Meeting</Link>
+              </div>
             </div>
 
             <div className={`why-image anim-slide-right ${whyImgVisible ? 'visible' : ''}`} ref={whyImgRef}>
@@ -963,6 +1185,91 @@ export default function Home() {
             <div className="home-cta-buttons">
               <Link to="/contact" className="btn-gold">Plan Your Visit</Link>
               <Link to="/services" className="btn-outline-gold">Explore Ministries</Link>
+              <Link to="/meeting" className="btn-gold">🎥 Join Live Meeting</Link>
+            </div>
+          </div>
+        </section>
+
+        {/* SERVICE TIMES & LOCATION SECTION WITH GOOGLE MAP */}
+        <section style={{ background: '#C49A3A', padding: '60px 20px' }}>
+          <div style={{ maxWidth: '1200px', margin: '0 auto' }}>
+            <div style={{ textAlign: 'center', marginBottom: '40px' }}>
+              <p className="section-eyebrow" style={{ color: '#0F172A' }}>Visit Us</p>
+              <h2 style={{ color: '#0F172A', fontSize: '2.5rem', margin: '10px 0' }}>Service Times & Location</h2>
+              <span className="gold-rule centered" style={{ background: '#0F172A' }} />
+            </div>
+
+            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(300px, 1fr))', gap: '40px', alignItems: 'center' }}>
+
+              {/* Service Times Text Info */}
+              <div style={{ color: '#0F172A' }}>
+                <div style={{ marginBottom: '30px' }}>
+                  <h3 style={{ fontSize: '1.5rem', fontWeight: 800, marginBottom: '10px', display: 'flex', alignItems: 'center', gap: '10px' }}>
+                    <span>⛪</span> Sunday Service
+                  </h3>
+                  <p style={{ fontSize: '1.1rem', margin: 0, paddingLeft: '35px' }}>9:00 AM & 11:00 AM</p>
+                </div>
+
+                <div style={{ marginBottom: '30px' }}>
+                  <h3 style={{ fontSize: '1.5rem', fontWeight: 800, marginBottom: '10px', display: 'flex', alignItems: 'center', gap: '10px' }}>
+                    <span>📖</span> Midweek Bible Study
+                  </h3>
+                  <p style={{ fontSize: '1.1rem', margin: 0, paddingLeft: '35px' }}>Wednesdays • 6:00 PM</p>
+                </div>
+
+                <div>
+                  <h3 style={{ fontSize: '1.5rem', fontWeight: 800, marginBottom: '10px', display: 'flex', alignItems: 'center', gap: '10px' }}>
+                    <span>📍</span> Our Location
+                  </h3>
+                  <p style={{ fontSize: '1.1rem', margin: 0, paddingLeft: '35px' }}>Lashibi / Tema Community 19, Ghana</p>
+                  <div style={{ marginLeft: '35px', marginTop: '15px', display: 'flex', gap: '10px', flexWrap: 'wrap' }}>
+                    <a
+                      href="https://maps.google.com/?q=Lashibi,Tema,Ghana"
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      style={{
+                        display: 'inline-block',
+                        padding: '10px 20px',
+                        background: '#0F172A',
+                        color: '#fff',
+                        textDecoration: 'none',
+                        borderRadius: '8px',
+                        fontWeight: 'bold'
+                      }}
+                    >
+                      Get Directions
+                    </a>
+                    <Link
+                      to="/meeting"
+                      style={{
+                        display: 'inline-block',
+                        padding: '10px 20px',
+                        background: '#0F172A',
+                        color: '#fff',
+                        textDecoration: 'none',
+                        borderRadius: '8px',
+                        fontWeight: 'bold'
+                      }}
+                    >
+                      🎥 Join Live Meeting
+                    </Link>
+                  </div>
+                </div>
+              </div>
+
+              {/* Google Maps Embed */}
+              <div style={{ borderRadius: '16px', overflow: 'hidden', boxShadow: '0 10px 30px rgba(0,0,0,0.2)' }}>
+                <iframe
+                  src="https://www.google.com/maps/embed?pb=!1m18!1m12!1m3!1d15877.806185308012!2d-0.0385903!3d5.684139!2m3!1f0!2f0!3f0!3m2!1i1024!2i768!4f13.1!3m3!1m2!1s0x102081559f82106b%3A0xf3fb5f201e0c81c7!2sLashibi%2C%20Tema%2C%20Ghana!5e0!3m2!1sen!2sgh!4v1715000000000!5m2!1sen!2sgh"
+                  width="100%"
+                  height="400"
+                  style={{ border: 0, display: 'block' }}
+                  allowFullScreen=""
+                  loading="lazy"
+                  referrerPolicy="no-referrer-when-downgrade"
+                  title="Church Location Map"
+                />
+              </div>
             </div>
           </div>
         </section>
@@ -972,6 +1279,12 @@ export default function Home() {
         <Link to="/chatbot" className="chatbot-icon" aria-label="Answered Prayer Network Chatbot">
           <FaComments className="chatbot-icon-symbol" />
           <span>Chat With Us</span>
+        </Link>
+
+        {/* Floating Join Live Meeting button */}
+        <Link to="/meeting" className="meeting-icon" aria-label="Join Live Meeting">
+          <FaVideo className="meeting-icon-symbol" />
+          <span>Join Live</span>
         </Link>
 
       </main>
