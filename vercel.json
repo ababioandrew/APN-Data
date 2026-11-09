@@ -4,7 +4,6 @@
     {
       "src": "server.js",
       "use": "@vercel/node"
-<<<<<<< HEAD
     },
     {
       "src": "package.json",
@@ -18,14 +17,5 @@
     { "handle": "filesystem" },
     { "src": "/api/(.*)", "dest": "/server.js" },
     { "src": "/(.*)", "dest": "/index.html" }
-=======
-    }
-  ],
-  "routes": [
-    {
-      "src": "/(.*)",
-      "dest": "/server.js"
-    }
->>>>>>> dc82ff065d337208075f403ba74583021600c7e2
   ]
 }
